@@ -27,4 +27,4 @@
 
 ## Stargazers:
 
-![GitHub stars](https://img.shields.io/github/stars/donskyblock/wallpaper-engine-gui?style=social)
+![Stargazers over time](https://starchart.cc/donskyblock/wallpaper-engine-gui.svg)
