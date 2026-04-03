@@ -1,0 +1,12 @@
+[package]
+name = "wallpaper-engine-gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+directories = "6.0.0"
+reqwest = "0.13.2"
+serde = "1.0.228"
+serde_json = "1.0.149"
+tauri = "2.10.3"
+tokio = "1.51.0"
