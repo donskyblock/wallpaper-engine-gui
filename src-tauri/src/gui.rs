@@ -1,67 +1,134 @@
-use tauri::command;
-use crate::steam::SteamCMD;
+use crate::desktop::{DesktopBackend, DesktopState};
+use crate::history::{self, HistoryItem};
+use crate::steam::{SteamCMD, SteamState};
 use crate::wallpaper::WallpaperManager;
-use crate::kde::{self, KdeStatus};
+use crate::workshop::{self, WorkshopItem};
 use serde::Serialize;
 
 #[derive(Serialize)]
-pub struct WorkshopItem {
-    pub id: u64,
-    pub title: String,
-    pub preview: String,
+pub struct DashboardState {
+    pub environment: DesktopState,
+    pub steam: SteamState,
+    pub ready: bool,
+    pub message: String,
+    pub history: Vec<HistoryItem>,
 }
 
 #[derive(Serialize)]
-pub struct EnvironmentStatus {
-    pub supported: bool,
-    pub plugin_installed: bool,
+pub struct ActionResponse {
     pub message: String,
+    pub dashboard: DashboardState,
 }
 
-#[command]
-pub async fn check_environment() -> EnvironmentStatus {
-    match kde::detect_environment() {
-        KdeStatus::PluginInstalled => EnvironmentStatus {
-            supported: true,
-            plugin_installed: true,
-            message: "Ready to go!".into(),
-        },
-        KdeStatus::KdeButNoPlugin => EnvironmentStatus {
-            supported: true,
-            plugin_installed: false,
-            message: "KDE detected but plugin not installed. Click to install.".into(),
-        },
-        KdeStatus::NotKde => EnvironmentStatus {
-            supported: false,
-            plugin_installed: false,
-            message: "Only KDE Plasma is currently supported.".into(),
-        },
-    }
+#[tauri::command]
+pub fn dashboard_state() -> Result<DashboardState, String> {
+    build_dashboard_state()
 }
 
-#[command]
-pub async fn install_plugin() -> Result<(), String> {
-    kde::install_plugin()
+#[tauri::command]
+pub fn check_environment() -> Result<DashboardState, String> {
+    build_dashboard_state()
 }
 
-#[command]
-pub async fn fetch_workshop() -> Vec<WorkshopItem> {
-    vec![
-        WorkshopItem { id: 123, title: "Cool Wallpaper 1".into(), preview: "https://picsum.photos/200/150?random=1".into() },
-        WorkshopItem { id: 456, title: "Cool Wallpaper 2".into(), preview: "https://picsum.photos/200/150?random=2".into() },
-        WorkshopItem { id: 789, title: "Cool Wallpaper 3".into(), preview: "https://picsum.photos/200/150?random=3".into() },
-    ]
+#[tauri::command]
+pub fn install_plugin() -> Result<ActionResponse, String> {
+    let backend = DesktopBackend::detect();
+    backend.install_plugin()?;
+
+    Ok(ActionResponse {
+        message: "The desktop wallpaper plugin was installed for the active backend.".into(),
+        dashboard: build_dashboard_state()?,
+    })
 }
 
-#[command]
-pub async fn install_wallpaper(wallpaper_id: u64) -> Result<(), String> {
+#[tauri::command]
+pub fn install_steamcmd() -> Result<ActionResponse, String> {
+    SteamCMD::install_managed()?;
+    Ok(ActionResponse {
+        message: "SteamCMD was installed into the app runtime.".into(),
+        dashboard: build_dashboard_state()?,
+    })
+}
+
+#[tauri::command]
+pub fn fetch_workshop(query: Option<String>) -> Result<Vec<WorkshopItem>, String> {
+    workshop::browse_workshop(query)
+}
+
+#[tauri::command]
+pub fn get_history() -> Result<Vec<HistoryItem>, String> {
+    history::load_history()
+}
+
+#[tauri::command]
+pub fn install_wallpaper(
+    wallpaper_id: u64,
+    title: Option<String>,
+    preview: Option<String>,
+    creator: Option<String>,
+) -> Result<ActionResponse, String> {
     let steam = SteamCMD::new()?;
-    let wm = WallpaperManager::new("downloads")?;
+    let manager = WallpaperManager::new();
+    let wallpaper_path = steam.workshop_path(wallpaper_id);
 
-    if !wm.is_installed(wallpaper_id) {
-        steam.download_workshop_item(431960, wallpaper_id)?;
-    }
+    let resolved_path = if manager.is_installed(&wallpaper_path) {
+        wallpaper_path
+    } else {
+        steam.download_workshop_item(wallpaper_id)?
+    };
 
-    wm.apply_wallpaper(wallpaper_id)?;
-    Ok(())
+    manager.apply_wallpaper(wallpaper_id, &resolved_path)?;
+
+    let enriched = if title.is_none() || preview.is_none() || creator.is_none() {
+        workshop::fetch_workshop_item_details(wallpaper_id).ok()
+    } else {
+        None
+    };
+
+    history::record(HistoryItem {
+        wallpaper_id,
+        title: title.or_else(|| enriched.as_ref().map(|item| item.title.clone())),
+        preview: preview.or_else(|| enriched.as_ref().map(|item| item.preview.clone())),
+        creator: creator.or_else(|| enriched.as_ref().map(|item| item.creator.clone())),
+        applied_at: workshop::unix_timestamp_now(),
+        local_path: resolved_path.to_string_lossy().into_owned(),
+    })?;
+
+    Ok(ActionResponse {
+        message: format!(
+            "Wallpaper {wallpaper_id} is now active in the configured desktop backend."
+        ),
+        dashboard: build_dashboard_state()?,
+    })
+}
+
+fn build_dashboard_state() -> Result<DashboardState, String> {
+    let backend = DesktopBackend::detect();
+    let environment = backend.state()?;
+    let steam = SteamCMD::state()?;
+    let history = history::load_history()?;
+    let ready = environment.supported && environment.plugin_installed && steam.installed;
+
+    let message = if ready {
+        "Setup complete. You can search, install, and apply wallpapers now.".into()
+    } else if !environment.supported {
+        format!(
+            "Detected desktop: {}. KDE Plasma is implemented today, and the backend layer is ready for other desktops later.",
+            environment.detected_session
+        )
+    } else if !steam.installed && !environment.plugin_installed {
+        "SteamCMD and the desktop plugin still need to be installed.".into()
+    } else if !steam.installed {
+        "Install SteamCMD to enable live workshop downloads.".into()
+    } else {
+        "Install the desktop plugin to start applying wallpapers.".into()
+    };
+
+    Ok(DashboardState {
+        environment,
+        steam,
+        ready,
+        message,
+        history,
+    })
 }

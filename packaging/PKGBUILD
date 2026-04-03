@@ -1,0 +1,22 @@
+pkgname=wallpaper-engine-linux
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Wallpaper Engine Linux desktop runtime with SteamCMD-assisted workshop installs"
+arch=("x86_64")
+url="https://github.com/donskyblock/wallpaper-engine-gui"
+license=("MIT")
+depends=("webkit2gtk-4.1" "gtk3" "libayatana-appindicator" "libsoup3")
+makedepends=("cargo" "npm" "pkgconf" "rust" "openssl")
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=("SKIP")
+
+build() {
+  cd "$srcdir/$pkgname-$pkgver/src-tauri"
+  cargo build --release
+}
+
+package() {
+  cd "$srcdir/$pkgname-$pkgver"
+  install -Dm755 "src-tauri/target/release/app" "$pkgdir/usr/bin/wallpaper-engine-linux"
+  install -Dm644 "packaging/wallpaper-engine-linux.desktop" "$pkgdir/usr/share/applications/wallpaper-engine-linux.desktop"
+}

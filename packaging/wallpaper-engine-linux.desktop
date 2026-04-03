@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Wallpaper Engine Linux
+Comment=Linux desktop runtime for Wallpaper Engine workshop wallpapers
+Exec=wallpaper-engine-linux
+Icon=wallpaper-engine-linux
+Categories=Utility;Graphics;
+Terminal=false
