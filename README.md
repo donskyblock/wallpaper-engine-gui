@@ -15,15 +15,11 @@
 
 ## Project Roadmap:
 
-- [] Get Steam Intergration Finished
-
-- [] Get GUI to be on par / better then Wallpaper Engines
-
-- [] Make Readme More competent
-
-- [] Make a AUR + Other packages
-
-- [] Make easy to install
+- [ ] Get Steam Integration Finished
+- [ ] Get GUI to be on par / better than Wallpaper Engine
+- [ ] Make README more competent
+- [ ] Make an AUR + other packages
+- [ ] Make installation easy
 
 ## Stargazers:
 
